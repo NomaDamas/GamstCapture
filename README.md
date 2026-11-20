@@ -71,6 +71,38 @@ python -m gamst_capture run outputs/synthetic_coin.mp4 \
 
 base URL에 `/chat/completions`가 없으면 자동으로 붙입니다. `OPENAI_BASE_URL`, `OPENAI_MODEL`, `OPENAI_API_KEY`도 fallback으로 지원합니다. 자격 증명은 코드나 report에 저장하지 않습니다. endpoint 오류는 VLM call의 `status: error`로 기록하고 저렴한 회전 분석 결과는 유지합니다. 설정이 없으면 화면과 report에 **VLM disabled**, 실제 호출 **0**이 표시됩니다.
 
+### 4. 실제 촬영 검증: count / jump / rhythm / zone + 기억
+
+GAMST의 시간 능력 provider를 실제 영상에 돌리고, 사람이나 측정 기기로 얻은 정답과 비교합니다. provider는 `catch-your-mind/gamst/providers/`의 `repetition`, `flight`, `rhythm`, `risk_field`입니다. 촬영 절차와 합격선은 GAMST `docs/capability-verification-protocol.md`에 있습니다.
+
+```bash
+python -m pip install -e '.[verify]'          # mediapipe
+python -m gamst_capture fetch-models --models models   # 고정 URL 3개를 받아 sha256 확인. 자동 다운로드는 하지 않음
+python -m gamst_capture verify count  count-01.mp4  --truth count-01.truth.json
+python -m gamst_capture verify jump   jump-01.mp4   --truth jump-01.truth.json    # truth에 subject_height_m 필요
+python -m gamst_capture verify rhythm hr-01.mp4     --truth hr-01.truth.json
+python -m gamst_capture verify zone   kitchen-01.mp4 --rule stove.rule.json --truth kitchen-01.truth.json
+```
+
+리포트에는 세 가지가 나란히 들어갑니다.
+
+- **native lane:** 원본 프레임 속도로 돌린 결과
+- **1fps lane:** 같은 영상을 1초에 1장씩만 넣은 결과. 1 FPS로 보는 VLM이 볼 수 있는 것과 같습니다.
+- **memory:** provider 사건을 GAMST 세션에 넣은 뒤, MCP `get_observation_page(events_only)`만으로 다시 답한 결과입니다.
+
+공개 실영상으로 도구가 끝까지 도는지만 확인했습니다. 정확도를 주장하는 결과가 아닙니다.
+
+- **count:** RepCountA 클립, 정답 7회
+  - native 8회, 1fps 6회
+  - 기억 8건
+- **rhythm:** MCD-rPPG 60초 클립, 접촉 PPG 62.6 bpm
+  - native 50.3 bpm
+  - 1fps는 `undersampled`(측정 불가)를 반환
+- **zone:** MOT17-09, 방문 3회
+  - native에서 1초 안에 잡힌 방문은 3회 중 1회, 1fps는 3회 모두
+- **jump:** RepCountA 점핑잭 영상(높이 정답 없음)
+  - 맞춰진 중력 값이 3~6 m/s²로 나와, 7.5~12 m/s² 범위의 품질 게이트가 필요하다는 것을 확인
+
 ## 측정된 합성 실행
 
 2026-11-18, 이 저장소의 기본 fixture(320×320, 30 FPS)에 대해 위 CLI를 직접 실행한 결과:

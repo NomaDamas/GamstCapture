@@ -26,6 +26,15 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--display", action="store_true", help="show annotated frames while processing")
     run.add_argument("--max-frames", type=int, help="optional capture/processing bound")
     run.add_argument("--no-vlm", action="store_true", help="ignore VLM environment configuration")
+    fetch = subparsers.add_parser("fetch-models", help="explicitly download the pinned MediaPipe light models")
+    fetch.add_argument("--models", default="models")
+    check = subparsers.add_parser("verify", help="real-capture check of a GAMST temporal capability")
+    check.add_argument("mode", choices=["count", "jump", "rhythm", "zone"])
+    check.add_argument("video", help="recorded video (native frame rate, with audio for zone)")
+    check.add_argument("--truth", help="ground-truth sidecar JSON (see docs/capability-verification-protocol.md)")
+    check.add_argument("--rule", help="zone mode: GAMST RiskField rule JSON")
+    check.add_argument("--models", default="models")
+    check.add_argument("--report", default="outputs/verify-report.json")
     return parser
 
 
@@ -36,6 +45,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Synthetic video: {args.output}")
         print(f"Ground truth: {truth['rotations']} rotations, {truth['frames']} frames, "
               f"spin {truth['spin_start_s']:.2f}s–{truth['spin_end_s']:.2f}s")
+        return 0
+    if args.command == "fetch-models":
+        from .verify import fetch_models
+        for key, path in fetch_models(args.models).items():
+            print(f"{key}: {path} (sha256 verified)")
+        return 0
+    if args.command == "verify":
+        from .verify import verify
+        result = verify(args.mode, args.video, args.truth, args.models, args.rule)
+        Path(args.report).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.report).write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
+        print(json.dumps({k: v for k, v in result.items() if k in ("mode", "native", "1fps", "memory", "truth")},
+                         indent=2, ensure_ascii=False))
+        print(f"Report: {Path(args.report)}")
         return 0
     if (args.source is None) == (args.webcam is None):
         raise SystemExit("provide exactly one video source or --webcam INDEX")
